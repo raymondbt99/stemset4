@@ -26,16 +26,31 @@ class _UserDashboardState extends State<UserDashboard> {
   // --- LOGIKA DATA ---
 
   void _fetchAndListen() {
+    // Ambil data awal
     _loadData();
-    supabase
-        .channel('public:assets')
+
+    // Buat channel baru
+    final channel = supabase.channel('public:assets');
+
+    channel
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
+          event:
+              PostgresChangeEvent.all, // Mendengar Insert, Update, dan Delete
           schema: 'public',
           table: 'assets',
-          callback: (payload) => _loadData(),
+          callback: (payload) {
+            debugPrint('Perubahan terdeteksi: ${payload.toString()}');
+            _loadData(); // Ambil data terbaru saat ada perubahan
+          },
         )
-        .subscribe();
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            debugPrint('Berhasil terhubung ke Realtime!');
+          }
+          if (error != null) {
+            debugPrint('Gagal terhubung');
+          }
+        });
   }
 
   Future<void> _loadData() async {
@@ -297,7 +312,16 @@ class _UserDashboardState extends State<UserDashboard> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(asset.roomName),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Icon(
+              Icons.circle,
+              size: 12,
+              color:
+                  asset.status == 'available'
+                      ? Colors.green
+                      : asset.status == 'in_use'
+                      ? Colors.orange
+                      : Colors.red,
+            ),
           ),
         );
       },
