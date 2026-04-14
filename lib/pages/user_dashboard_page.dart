@@ -330,6 +330,7 @@ class _UserDashboardState extends State<UserDashboard> {
 
   Widget _buildProfilePage() {
     final user = supabase.auth.currentUser;
+    final String? avatarUrl = user?.userMetadata?['avatar_url'];
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -338,10 +339,15 @@ class _UserDashboardState extends State<UserDashboard> {
           const SizedBox(height: 20),
           // Avatar / Foto Profil
           CircleAvatar(
-            radius: 50,
-            backgroundColor: Colors.blue.shade100,
-            child: const Icon(Icons.person, size: 60, color: Colors.blue),
-          ),
+          radius: 50,
+          backgroundColor: Colors.blue.shade100,
+          backgroundImage: avatarUrl != null 
+              ? NetworkImage(avatarUrl) 
+              : null, // Pakai foto Google jika ada
+          child: avatarUrl == null 
+              ? const Icon(Icons.person, size: 60, color: Colors.blue) 
+              : null,
+        ),
           const SizedBox(height: 20),
           // Informasi User
           Text(
