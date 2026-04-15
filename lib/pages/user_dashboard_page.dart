@@ -4,6 +4,7 @@ import 'package:stemset/models/user_asset_model.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart'; // Pastikan sudah di pubspec.yaml
 import 'package:stemset/login_page.dart';
+import 'package:stemset/pages/loan_history_page.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -13,6 +14,7 @@ class UserDashboard extends StatefulWidget {
 }
 
 class _UserDashboardState extends State<UserDashboard> {
+  final TextEditingController _notesController = TextEditingController();
   final supabase = Supabase.instance.client;
   int _currentIndex = 0; // Index untuk Bottom Navbar
   List<UserAsset> myAssets = [];
@@ -61,7 +63,7 @@ class _UserDashboardState extends State<UserDashboard> {
       final userId = supabase.auth.currentUser!.id;
       final response = await supabase
           .from('assets')
-          .select('id, name, asset_code, status, rooms(room_name)')
+          .select('id, name, asset_code, status, image_url, rooms(room_name)')
           .eq('assigned_to', userId);
 
       if (mounted) {
@@ -214,6 +216,8 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
+  
+
   Future<void> _showAssetDetail(String assetCode) async {
     // 1. Fetch data dari Supabase
     final data =
@@ -354,31 +358,70 @@ class _UserDashboardState extends State<UserDashboard> {
                         const SizedBox(height: 40),
 
                         // Tombol Aksi
-                        if (asset.status.toLowerCase() == 'available')
-                          SizedBox(
-                            width: double.infinity,
-                            height: 60,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(
-                                  0xFF2563EB,
-                                ), // Blue Primary
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                              ),
-                              onPressed: () => _processLoan(asset.id),
-                              child: const Text(
-                                "KONFIRMASI PINJAM",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          )
+                        // --- TAMBAHKAN INPUT NOTES SEBELUM TOMBOL ---
+if (asset.status.toLowerCase() == 'available') ...[
+  const Text(
+    "CATATAN PEMINJAMAN (OPSIONAL)",
+    style: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.bold,
+      color: Colors.grey,
+      letterSpacing: 1,
+    ),
+  ),
+  const SizedBox(height: 8),
+  TextField(
+    controller: _notesController,
+    decoration: InputDecoration(
+      hintText: "Contoh: Untuk keperluan meeting di ruang lab...",
+      fillColor: const Color(0xFFF8F9FA),
+      filled: true,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+    ),
+    maxLines: 2,
+  ),
+  const SizedBox(height: 24),
+  
+  // Tombol Konfirmasi
+  SizedBox(
+    width: double.infinity,
+    height: 60,
+    child: ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF2563EB),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      // UBAH BAGIAN INI: Kirim notes ke fungsi process
+      onPressed: () => _processLoan(asset.id, _notesController.text), 
+      child: const Text("KONFIRMASI PINJAM", style: TextStyle(fontWeight: FontWeight.bold)),
+    ),
+  ),
+]
+else if (asset.status.toLowerCase() == 'in_use')
+  SizedBox(
+    width: double.infinity,
+    height: 60,
+    child: ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.redAccent, // Warna merah untuk pengembalian
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      onPressed: () => _processReturn(asset.id),
+      child: const Text(
+        "KEMBALIKAN BARANG",
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+    ),
+  )
                         else
                           Container(
                             width: double.infinity,
@@ -417,25 +460,92 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  Future<void> _processLoan(String assetId) async {
-    try {
-      final userId = supabase.auth.currentUser!.id;
-      await supabase
-          .from('assets')
-          .update({'assigned_to': userId, 'status': 'in_use'})
-          .eq('id', assetId);
+  Future<void> _processLoan(String assetId, String notes) async {
+  try {
+    // 1. Tampilkan loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Peminjaman Berhasil!"),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      print(e);
-    }
+    final userId = supabase.auth.currentUser!.id;
+
+    // 2. Insert ke tabel loans
+    await supabase.from('loans').insert({
+      'asset_id': assetId,
+      'user_id': userId,
+      'notes': notes,
+      'status': 'active', // Status di tabel loans tetap 'active'
+    });
+
+    // 3. Update status aset menjadi 'in_use'
+    await supabase.from('assets').update({
+      'status': 'in_use', // <--- Perubahan di sini
+      'assigned_to': userId,
+    }).eq('id', assetId);
+
+    if (!mounted) return;
+    
+    Navigator.pop(context); // Tutup loading
+    Navigator.pop(context); // Tutup bottom sheet
+    _notesController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Aset berhasil digunakan!")),
+    );
+
+    _loadData(); // Segarkan data di Dashboard
+
+  } catch (e) {
+    Navigator.pop(context); 
+    print("Error: $e");
   }
+}
+
+Future<void> _processReturn(String assetId) async {
+  try {
+    // 1. Tampilkan Loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final userId = supabase.auth.currentUser!.id;
+
+    // 2. Update tabel LOANS: Tandai transaksi selesai
+    await supabase.from('loans').update({
+      'status': 'returned',
+      'return_date': DateTime.now().toIso8601String(),
+    }).match({
+      'asset_id': assetId,
+      'user_id': userId,
+      'status': 'active', // Pastikan hanya mengupdate yang masih aktif
+    });
+
+    // 3. Update tabel ASSETS: Kembalikan ke kondisi awal
+    await supabase.from('assets').update({
+      'status': 'available',
+      'assigned_to': null, // Kosongkan peminjam
+    }).eq('id', assetId);
+
+    if (!mounted) return;
+
+    Navigator.pop(context); // Tutup loading
+    Navigator.pop(context); // Tutup bottom sheet detail
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Aset berhasil dikembalikan!")),
+    );
+
+    _loadData(); // Segarkan Dashboard
+
+  } catch (e) {
+    Navigator.pop(context);
+    print("Error Return: $e");
+  }
+}
 
   // --- UI COMPONENTS ---
 
@@ -529,82 +639,97 @@ class _UserDashboardState extends State<UserDashboard> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      itemCount: myAssets.length,
-      itemBuilder: (context, index) {
-        final asset = myAssets[index];
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              ),
-            ],
+  physics: const BouncingScrollPhysics(), // Tambahan agar scroll lebih smooth
+  padding: const EdgeInsets.symmetric(vertical: 16),
+  itemCount: myAssets.length,
+  itemBuilder: (context, index) {
+    final asset = myAssets[index];
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Material(
-              color: Colors.transparent,
-              child: ListTile(
-                onTap: () => _showQRDialog(asset),
-                contentPadding: const EdgeInsets.all(16),
-                leading: Container(
-                  width: 50, // Ukuran tetap agar konsisten
-                  height: 50,
-                  padding: const EdgeInsets.all(
-                    4,
-                  ), // Memberi ruang putih di sekitar QR
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: QrImageView(
-                    data: asset.assetCode,
-                    version: QrVersions.auto,
-                    // Jangan beri size di dalam QrImageView agar dia mengikuti ukuran Container
-                    padding: EdgeInsets.zero,
-                    gapless: true,
-                  ),
-                ),
-                title: Text(
-                  asset.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: Colors.transparent,
+          child: ListTile(
+            onTap: () => _showQRDialog(asset), // Sesuai permintaan: tap muncul QR
+            contentPadding: const EdgeInsets.all(16),
+            leading: Container(
+  width: 50,
+  height: 50,
+  decoration: BoxDecoration(
+    color: Colors.grey[200],
+    borderRadius: BorderRadius.circular(12),
+  ),
+  child: ClipRRect(
+  borderRadius: BorderRadius.circular(12),
+  child: asset.fullImageUrl.isNotEmpty // Pakai getter fullImageUrl untuk pengecekan
+      ? Image.network(
+          asset.fullImageUrl,
+          key: ValueKey(asset.id), // Penting agar widget refresh jika ID sama tapi data beda
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Jika masuk ke sini, berarti URL-nya salah atau internet bermasalah
+            return const Icon(Icons.broken_image_outlined, color: Colors.red);
+          },
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return const Center(
+              child: SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
+        )
+      : const Icon(Icons.inventory_2, color: Color.fromARGB(255, 212, 223, 4)),
+),
+),
+            title: Text(
+              asset.name,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Row(
                   children: [
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 14,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          asset.roomName,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      asset.roomName,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   ],
                 ),
-                trailing: _buildStatusBadge(asset.status),
-              ),
+              ],
             ),
+            trailing: _buildStatusBadge(asset.status),
           ),
-        );
-      },
+        ),
+      ),
     );
+  },
+);
   }
 
   // Helper untuk Badge Status
@@ -701,14 +826,145 @@ class _UserDashboardState extends State<UserDashboard> {
           const SizedBox(height: 32),
 
           // Menu List
-          _buildMenuTile(Icons.help_outline_rounded, "Pusat Bantuan", () {}),
-          _buildMenuTile(Icons.history_rounded, "Riwayat Peminjaman", () {}),
+          _buildMenuTile(Icons.help_outline_rounded, "Pusat Bantuan", () {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (context, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Bantuan & Hubungi Kami", 
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            
+            // Opsi 1: Kontak via WhatsApp
+            ListTile(
+              leading: const Icon(Icons.chat_outlined, color: Colors.green),
+              title: const Text("Hubungi Admin IT"),
+              subtitle: const Text("Tanya seputar kendala aplikasi"),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+              onTap: () { /* Link ke WhatsApp */ },
+            ),
+            
+            // Opsi 2: Panduan Singkat
+            const Divider(),
+            const ExpansionTile(
+              leading: Icon(Icons.qr_code_scanner_rounded, color: Colors.blue),
+              title: Text("Cara Scan QR Code"),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text("Buka tab Scanner, arahkan kamera ke stiker QR yang tertempel di aset. Pastikan kamera fokus agar data muncul."),
+                )
+              ],
+            ),
+            
+            const ExpansionTile(
+              leading: Icon(Icons.assignment_return_outlined, color: Colors.orange),
+              title: Text("Cara Mengembalikan Aset"),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text("Buka profil, pilih Riwayat Peminjaman, cari aset yang aktif, lalu klik tombol Kembalikan Barang."),
+                )
+              ],
+            ),
+
+            const ExpansionTile(
+              leading: Icon(Icons.front_hand, color: Color.fromARGB(255, 255, 0, 60)),
+              title: Text("Cara Meminjam Aset"),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text("Arahkan kamera ke QR Code, isi tanggal mulai peminjaman lalu klik tombol Konfirmasi Pinjam."),
+                )
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}),
+          // Cari baris ini di Profile Page Anda:
+_buildMenuTile(Icons.history_rounded, "Riwayat Peminjaman", () {
+  // Tambahkan navigasi ke halaman history
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (context) => const LoanHistoryPage()),
+  );
+}),
           _buildMenuTile(Icons.settings_outlined, "Pengaturan Akun", () {}),
           _buildMenuTile(
-            Icons.info_outline_rounded,
-            "Tentang STEMSET v1.0",
-            () {},
+  Icons.info_outline_rounded,
+  "Tentang STEMSET v1.0",
+  () {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // MEMANGGIL LOGO LOKAL ANDA
+            Image.asset(
+              'assets/images/logo_stema.png',
+              height: 80,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.business_rounded,
+                size: 80,
+                color: Colors.blue,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              "STEMSET",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const Text(
+              "v1.0.0 (Stable)",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "Sistem Manajemen Aset Stella Maris International Education berbasis Mobile untuk pelacakan inventaris yang lebih efisien.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, height: 1.5),
+            ),
+            const Divider(height: 32),
+            const Text(
+              "Dikembangkan oleh:",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const Text(
+              "Tim IT Stella Maris",
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("TUTUP", style: TextStyle(fontWeight: FontWeight.bold)),
           ),
+        ],
+      ),
+    );
+  },
+),
 
           const SizedBox(height: 40),
 
@@ -844,3 +1100,4 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 }
+

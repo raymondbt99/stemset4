@@ -7,6 +7,7 @@ class UserAsset {
   final String roomName;
   final String? description;
   final String categoryName;
+  final String? imageUrl;
 
   UserAsset({
     required this.id,
@@ -16,8 +17,24 @@ class UserAsset {
     required this.purchaseDate,
     required this.roomName,
     required this.categoryName,
+    this.imageUrl,
     this.description,
   });
+
+  String get fullImageUrl {
+  // Jika imageUrl null, kosong, atau hanya berisi spasi
+  if (imageUrl == null || imageUrl!.trim().isEmpty) {
+    return "";
+  }
+  
+  final path = imageUrl!.trim();
+  final fullUrl = "https://gbptnphvlbfudeilmdcu.supabase.co/storage/v1/object/public/assets-images/$path";
+  
+  // Log ini akan muncul di Debug Console setiap kali widget memanggil gambar
+  print("DEBUG URL: $fullUrl"); 
+  
+  return fullUrl;
+}
 
   // Getter untuk mempermudah pengecekan status di UI (Warna Badge)
   bool get isMaintenance => status.toLowerCase() == 'maintenance';
@@ -42,6 +59,7 @@ class UserAsset {
               ? json['rooms']['room_name']
               : 'General Storage',
       description: json['description'],
+      imageUrl: json['image_url']?.toString(),
     );
   }
 }
