@@ -6,6 +6,7 @@ class UserAsset {
   final String purchaseDate;
   final String roomName;
   final String? description;
+  final String categoryName;
 
   UserAsset({
     required this.id,
@@ -14,6 +15,7 @@ class UserAsset {
     required this.status,
     required this.purchaseDate,
     required this.roomName,
+    required this.categoryName,
     this.description,
   });
 
@@ -31,6 +33,10 @@ class UserAsset {
       status: json['status'] ?? 'available',
       purchaseDate: json['purchase_date'] ?? '',
       // Menangani join table dari 'rooms'
+      categoryName:
+          json['categories'] != null
+              ? json['categories']['name']
+              : 'Uncategorized',
       roomName:
           json['rooms'] != null
               ? json['rooms']['room_name']
