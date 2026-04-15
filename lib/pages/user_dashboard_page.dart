@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart'; // Pastikan sudah di pubspec.yaml
 import 'package:stemset/login_page.dart';
 import 'package:stemset/pages/loan_history_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -547,6 +548,12 @@ Future<void> _processReturn(String assetId) async {
   }
 }
 
+Future<void> _launchHelpdesk() async {
+  final Uri url = Uri.parse('https://helpdesk.stella-maris.sch.id');
+  if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+    throw Exception('Tidak dapat membuka $url');
+  }
+}
   // --- UI COMPONENTS ---
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
@@ -846,13 +853,92 @@ Future<void> _processReturn(String assetId) async {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             
-            // Opsi 1: Kontak via WhatsApp
+            // Opsi 1: Kontak via Email
             ListTile(
               leading: const Icon(Icons.chat_outlined, color: Colors.green),
               title: const Text("Hubungi Admin IT"),
               subtitle: const Text("Tanya seputar kendala aplikasi"),
               trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-              onTap: () { /* Link ke WhatsApp */ },
+              onTap: () {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Logo Stema
+          Image.asset(
+            'assets/images/logo_stema.png',
+            height: 60,
+            errorBuilder: (context, error, stackTrace) => 
+                const Icon(Icons.business, size: 60, color: Colors.blue),
+          ),
+          const SizedBox(height: 16),
+          
+          const Text(
+            "IT Helpdesk Support",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          const SizedBox(height: 8),
+          
+          // 2. Email Support
+          const Text(
+            "it-departement@stella-maris.sch.id",
+            style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+          ),
+          const SizedBox(height: 20),
+          
+          const Divider(),
+          const SizedBox(height: 10),
+          
+          // 3. Instruksi Helpdesk
+          const Text(
+            "Untuk kendala teknis lebih lanjut, silakan buat tiket laporan Anda melalui sistem helpdesk kami:",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          
+          // Tombol Link Helpdesk
+          InkWell(
+            onTap: () {
+    _launchHelpdesk(); // Memanggil future yang sudah Anda buat
+  },
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.confirmation_number_outlined, size: 18, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text(
+                    "helpdesk.stella-maris.sch.id",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("TUTUP"),
+        ),
+      ],
+    ),
+  );
+},
             ),
             
             // Opsi 2: Panduan Singkat
